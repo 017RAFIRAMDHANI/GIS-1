@@ -26,9 +26,10 @@ class UsersViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
 class ReklameViewSet(viewsets.ModelViewSet):
-    queryset = Reklame.objects.all()
+    queryset = Reklame.objects.all().order_by("-created_at")
     serializer_class = ReklameSerializer
     permission_classes = [permissions.AllowAny]
+    lookup_field = "kode_reklame"
 
 class PerizinanViewSet(viewsets.ModelViewSet):
     queryset = Perizinan.objects.all()
