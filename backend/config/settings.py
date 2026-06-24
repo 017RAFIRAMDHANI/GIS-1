@@ -2,6 +2,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import dj_database_url
 import os
+from datetime import timedelta
 
 load_dotenv()
 
@@ -66,10 +67,9 @@ DATABASES = {
     )
 }
 
-# CORS → izinkan Next.js akses backend
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]
+# CORS → baca dari env, fallback ke localhost
+_cors_origins_env = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -84,6 +84,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -96,7 +97,6 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
 }
-from datetime import timedelta
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
