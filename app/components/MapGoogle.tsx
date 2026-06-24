@@ -54,7 +54,7 @@ export default function MapGoogle({
       center={center}
       zoom={5}
       mapContainerStyle={{ width: "100%", height: "500px" }}
-      onLoad={(map) => (mapRef.current = map)}
+      onLoad={(map) => { mapRef.current = map; }}
     >
       {selected && (
         <>
