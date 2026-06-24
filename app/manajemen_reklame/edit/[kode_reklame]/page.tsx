@@ -7,11 +7,7 @@ import AppShell from "../../../components/AppShell";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
-declare global {
-  interface Window {
-    google: any;
-  }
-}
+
 
 type ReklameForm = {
   id: string;
