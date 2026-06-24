@@ -203,7 +203,7 @@ export default function Page() {
   const PER_PAGE = 5;
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/reklame/")
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/reklame/`)
       .then((res) => {
         if (!res.ok) {
           throw new Error("Gagal mengambil data");

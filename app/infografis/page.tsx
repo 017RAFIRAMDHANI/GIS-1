@@ -40,7 +40,7 @@ interface FilterState {
   tahun: string;
 }
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api`;
 const DONUT_COLORS = ['#0ea5e9', '#22c55e', '#eab308', '#f97316'];
 
 function formatRupiah(val: number): string {
