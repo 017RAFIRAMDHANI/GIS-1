@@ -79,6 +79,23 @@ export const authOptions = {
 
       return session;
     },
+
+    // M-01: Restrict open redirect — only allow same-origin relative paths.
+    async redirect({ url, baseUrl }) {
+      // Accept relative paths (e.g. "/dashboard")
+      if (url.startsWith("/")) return url;
+
+      // Reject any absolute URL that points to a different origin
+      try {
+        const target = new URL(url);
+        const base = new URL(baseUrl);
+        if (target.origin === base.origin) return url;
+      } catch {
+        // url is not a valid absolute URL — fall through to default
+      }
+
+      return baseUrl;
+    },
   },
 
   session: {
