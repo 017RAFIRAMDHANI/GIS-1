@@ -22,6 +22,13 @@
 body {
   font-family: "Inter", sans-serif;
   background: #edf2f7;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Hanya kunci scroll ketika layout admin aktif */
+body.admin-shell-active {
   height: 100vh;
   overflow: hidden;
 }

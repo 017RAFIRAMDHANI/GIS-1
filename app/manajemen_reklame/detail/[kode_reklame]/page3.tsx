@@ -3,6 +3,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import "../../../styles/detail_aset.css";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -323,11 +326,14 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const { data: session } = useSession();
+  const accessToken = (session as any)?.accessToken;
+
   useEffect(() => {
-    if (kodeReklame) {
+    if (kodeReklame && accessToken) {
       fetchDetailReklame();
     }
-  }, [kodeReklame]);
+  }, [kodeReklame, accessToken]);
 
   async function fetchDetailReklame() {
     try {
@@ -339,6 +345,7 @@ export default function Page() {
         {
           method: "GET",
           cache: "no-store",
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
         }
       );
 
@@ -371,6 +378,7 @@ export default function Page() {
       const response = await fetch(`${API_BASE_URL}/api/foto/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {
@@ -397,6 +405,7 @@ export default function Page() {
       const response = await fetch(`${API_BASE_URL}/api/dokumen/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {
@@ -423,6 +432,7 @@ export default function Page() {
       const response = await fetch(`${API_BASE_URL}/api/perizinan/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {

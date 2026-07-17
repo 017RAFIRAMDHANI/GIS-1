@@ -72,6 +72,9 @@ class Reklame(models.Model):
     tinggi_m = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     status_reklame = models.CharField(max_length=50, null=True, blank=True)
     tanggal_pasang = models.DateField(null=True, blank=True)
+    kabupaten_kota = models.CharField(max_length=100, null=True, blank=True)
+    pengguna = models.CharField(max_length=255, null=True, blank=True)
+    kuasa_pengguna = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -146,3 +149,50 @@ class FotoReklame(models.Model):
 
     def __str__(self):
         return f"Foto {self.reklame.kode_reklame}"
+
+
+class LaporanMasyarakat(models.Model):
+    KATEGORI_CHOICES = [
+        ('REKLAME_ILEGAL', 'Reklame Ilegal'),
+        ('REKLAME_RUSAK', 'Reklame Rusak'),
+        ('MELANGGAR_ZONA', 'Melanggar Zona'),
+        ('REKLAME_KADALUARSA', 'Reklame Kadaluarsa'),
+        ('LAINNYA', 'Lainnya'),
+    ]
+
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('DIPROSES', 'Diproses'),
+        ('SELESAI', 'Selesai'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    nama_pelapor = models.CharField(max_length=255, null=True, blank=True)
+    no_telepon = models.CharField(max_length=20, null=True, blank=True)
+    email_pelapor = models.EmailField(null=True, blank=True)
+    isi_laporan = models.TextField()
+    kategori_laporan = models.CharField(max_length=50, choices=KATEGORI_CHOICES)
+    foto = models.ImageField(upload_to='foto/laporan/', null=True, blank=True)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    alamat_lokasi = models.CharField(max_length=500, null=True, blank=True)
+    kecamatan = models.CharField(max_length=100, null=True, blank=True)
+    reklame = models.ForeignKey(
+        Reklame,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_column='reklame_id',
+        related_name='laporan'
+    )
+    status_laporan = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    catatan_admin = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'laporan_masyarakat'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Laporan {self.id} - {self.kategori_laporan}"

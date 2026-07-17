@@ -1,6 +1,5 @@
 # ============================================================
 # FILE: backend/aset/urls.py
-# GANTI SELURUH ISI FILE INI
 # ============================================================
 
 from django.urls import path, include
@@ -15,9 +14,19 @@ router.register(r'reklame', views.ReklameViewSet)
 router.register(r'perizinan', views.PerizinanViewSet)
 router.register(r'dokumen', views.DokumenReklameViewSet)
 router.register(r'foto', views.FotoReklameViewSet)
+router.register(r'laporan-masyarakat', views.LaporanMasyarakatViewSet)
 
 urlpatterns = [
+    # ── Laporan Masyarakat statistics (MUST be before router.urls to avoid pk clash) ──
+    path('laporan-masyarakat/stats/', views.laporan_stats, name='laporan-stats'),
+    
+    # ── Auth ──
+    path('auth/login/', views.login_admin, name='auth-login'),
+    path('auth/change-password/', views.change_password, name='auth-change-password'),
+    
     path('', include(router.urls)),
-    # ── NEW: Infografis statistics ──
+    # ── Filter options untuk dropdown Manajemen Reklame ──
+    path('reklame-filter-options/', views.reklame_filter_options, name='reklame-filter-options'),
+    # ── Infografis statistics ──
     path('infografis/', views.infografis_stats, name='infografis-stats'),
 ]

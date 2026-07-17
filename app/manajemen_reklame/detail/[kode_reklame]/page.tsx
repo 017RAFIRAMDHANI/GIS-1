@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "../../../components/AppShell";
 import "../../../styles/detail_aset.css";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -52,6 +54,11 @@ type ReklameDetail = {
   status_reklame: string;
   tanggal_pasang: string;
   created_at?: string;
+  kabupaten_kota?: string | null;
+  pengguna?: string | null;
+  kuasa_pengguna?: string | null;
+  tipe_zona?: string | null;
+  nama_kategori?: string | null;
 };
 
 function toArrayResponse(data: any) {
@@ -120,11 +127,14 @@ export default function DetilAsetPage() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const { data: session, status } = useSession();
+  const accessToken = (session as any)?.accessToken;
+
   useEffect(() => {
-    if (kodeReklame) {
+    if (kodeReklame && status === "authenticated" && accessToken) {
       fetchDetailReklame();
     }
-  }, [kodeReklame]);
+  }, [kodeReklame, accessToken, status]);
 
   async function fetchDetailReklame() {
     try {
@@ -136,6 +146,7 @@ export default function DetilAsetPage() {
         {
           method: "GET",
           cache: "no-store",
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
         }
       );
 
@@ -168,6 +179,7 @@ export default function DetilAsetPage() {
       const response = await fetch(`${API_BASE_URL}/api/foto/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {
@@ -194,6 +206,7 @@ export default function DetilAsetPage() {
       const response = await fetch(`${API_BASE_URL}/api/dokumen/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {
@@ -220,6 +233,7 @@ export default function DetilAsetPage() {
       const response = await fetch(`${API_BASE_URL}/api/perizinan/`, {
         method: "GET",
         cache: "no-store",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
       });
 
       if (!response.ok) {
@@ -501,16 +515,20 @@ export default function DetilAsetPage() {
               <DetailRow label="NIK/NPWP" value={reklame.nik_npwp} />
               <DetailRow
                 label="Kategori Reklame"
-                value={reklame.kategori_nama || reklame.kategori}
+                value={reklame.nama_kategori || reklame.kategori_nama || reklame.kategori}
               />
               <DetailRow
                 label="Zona Tata Ruang"
                 value={reklame.zona_nama || reklame.zona}
               />
+              <DetailRow label="Tipe Zona" value={reklame.tipe_zona} />
               <DetailRow label="Status Reklame" value={statusLabel(reklame.status_reklame)} />
             </div>
 
             <div>
+              <DetailRow label="Kabupaten/Kota" value={reklame.kabupaten_kota} />
+              <DetailRow label="Pengguna" value={reklame.pengguna} />
+              <DetailRow label="Kuasa Pengguna" value={reklame.kuasa_pengguna} />
               <DetailRow label="Latitude" value={reklame.latitude} />
               <DetailRow label="Longitude" value={reklame.longitude} />
               <DetailRow label="Luas Reklame" value={`${formatValue(reklame.luas_m2)} m²`} />

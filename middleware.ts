@@ -38,7 +38,7 @@ const authMiddleware = withAuth({
 });
 
 export default function middleware(req: NextRequest) {
-  const { pathname, method } = req.nextUrl;
+  const { pathname } = req.nextUrl;
 
   // Apply rate limit only to the credentials login endpoint
   if (
@@ -69,7 +69,7 @@ export default function middleware(req: NextRequest) {
   return (authMiddleware as any)(req, {} as any);
 }
 
-// 🔥 protect semua route KECUALI login
+// 🔥 protect semua route KECUALI login, landing, laporan publik, infografis laporan, dan root path (/)
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico|image|images|assets).*)"],
+  matcher: ["/((?!api|_next|favicon.ico|image|images|assets|landing|laporan-masyarakat|infografis-laporan|$).*)"],
 };

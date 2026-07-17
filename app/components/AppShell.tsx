@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Navbar from "./Navbar";
 import NavDrawer from "../components/Navdrawer";
 import Sidebar from "./Sidebar";
 import SidebarToggle from "../components/Sidebartoggle";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 
 interface AppShellProps {
     children: React.ReactNode;
@@ -21,10 +22,19 @@ export default function AppShell({ children, fullBleed }: AppShellProps) {
     const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
     const pathname = usePathname();
+    const { data: session } = useSession();
+
+    useEffect(() => {
+        if ((session as any)?.error === "RefreshTokenExpired") {
+            signOut({ callbackUrl: "/login" });
+        }
+    }, [session]);
 
     const hideSidebar =
         pathname.startsWith("/manajemen_reklame") ||
+        pathname.startsWith("/manajemen-laporan") ||
         pathname.startsWith("/infografis") ||
+        pathname.startsWith("/infografis-laporan") ||
         pathname.startsWith("/ubah_password");
 
     const toggleSidebar = useCallback(() => {

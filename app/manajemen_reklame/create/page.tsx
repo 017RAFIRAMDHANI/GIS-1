@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import AppShell from "../../../components/AppShell";
+import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import ReklameLocationSection from "../../../components/ReklameLocationSection";
+import AppShell from "../../components/AppShell";
+import ReklameLocationSection from "../../components/ReklameLocationSection";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 type ReklameForm = {
-  id: string;
   kode_reklame: string;
   nama_pemilik: string;
   nik_npwp: string;
@@ -25,13 +25,6 @@ type ReklameForm = {
   kuasa_pengguna: string;
 };
 
-type FotoReklame = {
-  id: number | string;
-  reklame: number | string;
-  foto: string;
-  keterangan?: string;
-};
-
 type Kategori = {
   id: number | string;
   nama_kategori?: string;
@@ -45,8 +38,14 @@ type Zona = {
   nama?: string;
 };
 
+type PendingPhoto = {
+  id: string;
+  file: File;
+  keterangan: string;
+  previewUrl: string;
+};
+
 const initialForm: ReklameForm = {
-  id: "",
   kode_reklame: "",
   nama_pemilik: "",
   nik_npwp: "",
@@ -63,29 +62,45 @@ const initialForm: ReklameForm = {
   kuasa_pengguna: "",
 };
 
-export default function Page() {
+function toArrayResponse<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+
+  if (typeof data === "object" && data !== null && "results" in data) {
+    const results = (data as { results?: unknown }).results;
+    if (Array.isArray(results)) return results as T[];
+  }
+
+  return [];
+}
+
+function isValidCoordinate(latitude: number, longitude: number) {
+  return (
+    !Number.isNaN(latitude) &&
+    !Number.isNaN(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+}
+
+export default function CreateReklamePage() {
   const router = useRouter();
-  const params = useParams();
   const { data: session, status } = useSession();
   const accessToken = (session as { accessToken?: string } | null)?.accessToken;
 
-  const kodeReklame = String(params.kode_reklame || "");
-
   const [tab, setTab] = useState("informasi");
   const [form, setForm] = useState<ReklameForm>(initialForm);
-  const [originalForm, setOriginalForm] = useState<ReklameForm>(initialForm);
-
   const [kategoriList, setKategoriList] = useState<Kategori[]>([]);
   const [zonaList, setZonaList] = useState<Zona[]>([]);
 
-  const [photos, setPhotos] = useState<FotoReklame[]>([]);
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const [photoCaption, setPhotoCaption] = useState("");
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [photoInputKey, setPhotoInputKey] = useState(0);
+  const pendingPhotosRef = useRef<PendingPhoto[]>([]);
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -96,170 +111,96 @@ export default function Page() {
   ];
 
   useEffect(() => {
-    async function initializePage() {
-      await Promise.all([
-        fetchDetailReklame(),
-        fetchKategori(),
-        fetchZona(),
-      ]);
+    async function loadFormOptions() {
+      try {
+        const [kategoriResponse, zonaResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/kategori/`, {
+            method: "GET",
+            cache: "no-store",
+            headers: accessToken
+              ? { Authorization: `Bearer ${accessToken}` }
+              : {},
+          }),
+          fetch(`${API_BASE_URL}/api/zona/`, {
+            method: "GET",
+            cache: "no-store",
+            headers: accessToken
+              ? { Authorization: `Bearer ${accessToken}` }
+              : {},
+          }),
+        ]);
+
+        if (kategoriResponse.ok) {
+          const kategoriData: unknown = await kategoriResponse.json();
+          setKategoriList(toArrayResponse<Kategori>(kategoriData));
+        }
+
+        if (zonaResponse.ok) {
+          const zonaData: unknown = await zonaResponse.json();
+          setZonaList(toArrayResponse<Zona>(zonaData));
+        }
+      } catch (error) {
+        console.error("Gagal mengambil kategori atau zona:", error);
+      }
     }
 
-    if (kodeReklame && status === "authenticated" && accessToken) {
-      initializePage();
+    if (status === "authenticated" && accessToken) {
+      void loadFormOptions();
     }
-  }, [kodeReklame, accessToken, status]);
+  }, [accessToken, status]);
 
   useEffect(() => {
-    if (form.id) {
-      fetchPhotos();
-    }
-  }, [form.id]);
+    pendingPhotosRef.current = pendingPhotos;
+  }, [pendingPhotos]);
 
-  async function fetchDetailReklame() {
-    try {
-      setLoading(true);
-      setErrorMessage("");
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/reklame/${encodeURIComponent(kodeReklame)}/`,
-        {
-          method: "GET",
-          cache: "no-store",
-          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Data reklame tidak ditemukan.");
-      }
-
-      const data = await response.json();
-
-      const nextForm: ReklameForm = {
-        id: normalizeValue(data.id),
-        kode_reklame: normalizeValue(data.kode_reklame),
-        nama_pemilik: normalizeValue(data.nama_pemilik),
-        nik_npwp: normalizeValue(data.nik_npwp),
-        latitude: normalizeValue(data.latitude),
-        longitude: normalizeValue(data.longitude),
-        luas_m2: normalizeValue(data.luas_m2),
-        tinggi_m: normalizeValue(data.tinggi_m),
-        status_reklame: normalizeValue(data.status_reklame),
-        tanggal_pasang: toInputDate(data.tanggal_pasang),
-        kategori: normalizeValue(data.kategori),
-        zona: normalizeValue(data.zona),
-        kabupaten_kota: normalizeValue(data.kabupaten_kota),
-        pengguna: normalizeValue(data.pengguna),
-        kuasa_pengguna: normalizeValue(data.kuasa_pengguna),
-      };
-
-      setForm(nextForm);
-      setOriginalForm(nextForm);
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Gagal mengambil data reklame dari backend."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchKategori() {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/kategori/`, {
-        method: "GET",
-        cache: "no-store",
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  useEffect(() => {
+    return () => {
+      pendingPhotosRef.current.forEach((photo) => {
+        URL.revokeObjectURL(photo.previewUrl);
       });
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      setKategoriList(toArrayResponse<Kategori>(data));
-    } catch (error) {
-      console.error("Gagal mengambil kategori:", error);
-    }
-  }
-
-  async function fetchZona() {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/zona/`, {
-        method: "GET",
-        cache: "no-store",
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      setZonaList(toArrayResponse<Zona>(data));
-    } catch (error) {
-      console.error("Gagal mengambil zona:", error);
-    }
-  }
-
-  async function fetchPhotos() {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/foto/`, {
-        method: "GET",
-        cache: "no-store",
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
-
-      if (!response.ok) return;
-
-      const data = await response.json();
-      const photoList = toArrayResponse<FotoReklame>(data);
-
-      const filteredPhotos = photoList.filter(
-        (item: FotoReklame) => String(item.reklame) === String(form.id)
-      );
-
-      setPhotos(filteredPhotos);
-    } catch (error) {
-      console.error("Gagal mengambil foto:", error);
-    }
-  }
+    };
+  }, []);
 
   function updateFormField(name: keyof ReklameForm, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
 
   function updateCoordinate(latitude: string, longitude: string) {
-    setForm((prev) => ({
-      ...prev,
-      latitude,
-      longitude,
-    }));
+    setForm((prev) => ({ ...prev, latitude, longitude }));
   }
 
   function validateForm() {
+    if (!form.kode_reklame.trim()) {
+      setTab("informasi");
+      return "Kode reklame wajib diisi.";
+    }
+
     if (!form.nama_pemilik.trim()) {
+      setTab("informasi");
       return "Nama pemilik wajib diisi.";
     }
 
+    if (!form.status_reklame.trim()) {
+      setTab("informasi");
+      return "Status reklame wajib dipilih.";
+    }
+
     if (!form.latitude.trim()) {
-      return "Latitude wajib diisi.";
+      setTab("lokasi");
+      return "Latitude wajib diisi pada halaman Lokasi.";
     }
 
     if (!form.longitude.trim()) {
-      return "Longitude wajib diisi.";
+      setTab("lokasi");
+      return "Longitude wajib diisi pada halaman Lokasi.";
     }
 
-    const lat = Number(form.latitude);
-    const lng = Number(form.longitude);
+    const latitude = Number(form.latitude);
+    const longitude = Number(form.longitude);
 
-    if (!isValidCoordinate(lat, lng)) {
+    if (!isValidCoordinate(latitude, longitude)) {
+      setTab("lokasi");
       return "Koordinat tidak valid. Latitude harus antara -90 s.d. 90, Longitude antara -180 s.d. 180.";
-    }
-
-    if (!form.status_reklame.trim()) {
-      return "Status reklame wajib dipilih.";
     }
 
     return "";
@@ -267,6 +208,7 @@ export default function Page() {
 
   function buildPayload() {
     return {
+      kode_reklame: form.kode_reklame,
       nama_pemilik: form.nama_pemilik,
       nik_npwp: form.nik_npwp || null,
       latitude: form.latitude,
@@ -283,12 +225,40 @@ export default function Page() {
     };
   }
 
+  async function uploadPendingPhotos(reklameId: string) {
+    let failedUploads = 0;
+
+    for (const photo of pendingPhotos) {
+      const photoFormData = new FormData();
+      photoFormData.append("reklame", reklameId);
+      photoFormData.append("foto", photo.file);
+      photoFormData.append("keterangan", photo.keterangan);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/foto/`, {
+          method: "POST",
+          body: photoFormData,
+          headers: accessToken
+            ? { Authorization: `Bearer ${accessToken}` }
+            : {},
+        });
+
+        if (!response.ok) {
+          failedUploads += 1;
+        }
+      } catch {
+        failedUploads += 1;
+      }
+    }
+
+    return failedUploads;
+  }
+
   async function handleSubmit() {
     setErrorMessage("");
     setSuccessMessage("");
 
     const validationMessage = validateForm();
-
     if (validationMessage) {
       setErrorMessage(validationMessage);
       return;
@@ -297,41 +267,56 @@ export default function Page() {
     try {
       setSaving(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/reklame/${encodeURIComponent(kodeReklame)}/`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
-          body: JSON.stringify(buildPayload()),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/reklame/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify(buildPayload()),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
 
-        if (errorData && typeof errorData === 'object') {
+        if (errorData && typeof errorData === "object") {
           const messages = Object.entries(errorData)
             .map(([field, errors]) => {
-              const msgs = Array.isArray(errors) ? errors.join(', ') : String(errors);
-              return `${field}: ${msgs}`;
+              const message = Array.isArray(errors)
+                ? errors.join(", ")
+                : String(errors);
+              return `${field}: ${message}`;
             })
-            .join(' | ');
-          throw new Error(messages || "Gagal menyimpan perubahan data reklame.");
+            .join(" | ");
+
+          throw new Error(messages || "Gagal menyimpan data reklame baru.");
         }
 
-        throw new Error("Gagal menyimpan perubahan data reklame.");
+        throw new Error("Gagal menyimpan data reklame baru.");
       }
 
-      setSuccessMessage("Data reklame berhasil diperbarui.");
+      const createdReklame = await response.json();
+      const failedUploads = createdReklame?.id
+        ? await uploadPendingPhotos(String(createdReklame.id))
+        : pendingPhotos.length;
 
-      setTimeout(() => {
-        router.push(
-          `/manajemen_reklame/detail/${encodeURIComponent(kodeReklame)}`
+      pendingPhotos.forEach((photo) => {
+        URL.revokeObjectURL(photo.previewUrl);
+      });
+      setPendingPhotos([]);
+
+      if (failedUploads > 0) {
+        setSuccessMessage("Data reklame berhasil ditambahkan.");
+        setErrorMessage(
+          `${failedUploads} foto gagal diunggah. Foto dapat ditambahkan kembali melalui halaman Edit Reklame.`
         );
-      }, 700);
+      } else {
+        setSuccessMessage("Reklame baru berhasil ditambahkan!");
+      }
+
+      window.setTimeout(() => {
+        router.push("/manajemen_reklame");
+      }, failedUploads > 0 ? 1800 : 1000);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -343,12 +328,6 @@ export default function Page() {
     }
   }
 
-  function handleReset() {
-    setForm(originalForm);
-    setErrorMessage("");
-    setSuccessMessage("");
-  }
-
   function handleUseCurrentLocation() {
     if (!navigator.geolocation) {
       setErrorMessage("Browser tidak mendukung fitur lokasi.");
@@ -357,10 +336,10 @@ export default function Page() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const latitude = position.coords.latitude.toFixed(6);
-        const longitude = position.coords.longitude.toFixed(6);
-
-        updateCoordinate(latitude, longitude);
+        updateCoordinate(
+          position.coords.latitude.toFixed(6),
+          position.coords.longitude.toFixed(6)
+        );
         setSuccessMessage("Lokasi berhasil diambil dari perangkat.");
         setErrorMessage("");
       },
@@ -370,107 +349,52 @@ export default function Page() {
     );
   }
 
-  async function handleUploadPhoto() {
+  function handleAddPendingPhoto() {
     if (!selectedPhoto) {
       setErrorMessage("Pilih foto terlebih dahulu.");
       return;
     }
 
-    if (!form.id) {
-      setErrorMessage("ID reklame tidak ditemukan.");
-      return;
-    }
+    const nextPhoto: PendingPhoto = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file: selectedPhoto,
+      keterangan: photoCaption.trim(),
+      previewUrl: URL.createObjectURL(selectedPhoto),
+    };
 
-    try {
-      setUploadingPhoto(true);
-      setErrorMessage("");
-      setSuccessMessage("");
+    setPendingPhotos((prev) => [...prev, nextPhoto]);
+    setSelectedPhoto(null);
+    setPhotoCaption("");
+    setPhotoInputKey((prev) => prev + 1);
+    setErrorMessage("");
+    setSuccessMessage("Foto dimasukkan ke daftar dan akan diunggah saat data disimpan.");
+  }
 
-      const formData = new FormData();
-      formData.append("reklame", form.id);
-      formData.append("foto", selectedPhoto);
-      formData.append("keterangan", photoCaption);
+  function handleDeletePendingPhoto(photoId: string) {
+    setPendingPhotos((prev) => {
+      const deletedPhoto = prev.find((photo) => photo.id === photoId);
 
-      const response = await fetch(`${API_BASE_URL}/api/foto/`, {
-        method: "POST",
-        body: formData,
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-
-        throw new Error(
-          errorData ? JSON.stringify(errorData) : "Gagal upload foto."
-        );
+      if (deletedPhoto) {
+        URL.revokeObjectURL(deletedPhoto.previewUrl);
       }
 
-      setSelectedPhoto(null);
-      setPhotoCaption("");
-      setSuccessMessage("Foto berhasil diunggah.");
-      await fetchPhotos();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Gagal upload foto."
-      );
-    } finally {
-      setUploadingPhoto(false);
-    }
+      return prev.filter((photo) => photo.id !== photoId);
+    });
   }
 
-  async function handleDeletePhoto(photoId: number | string) {
-    const confirmDelete = window.confirm("Hapus foto ini?");
+  function handleReset() {
+    pendingPhotos.forEach((photo) => {
+      URL.revokeObjectURL(photo.previewUrl);
+    });
 
-    if (!confirmDelete) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/foto/${photoId}/`, {
-        method: "DELETE",
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-      });
-
-      if (!response.ok) {
-        throw new Error("Gagal menghapus foto.");
-      }
-
-      setSuccessMessage("Foto berhasil dihapus.");
-      await fetchPhotos();
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : "Gagal menghapus foto."
-      );
-    }
-  }
-
-  if (loading) {
-    return (
-      <AppShell>
-        <div style={styles.page}>
-          <div style={styles.loading}>Mengambil data edit dari backend...</div>
-        </div>
-      </AppShell>
-    );
-  }
-
-  if (errorMessage && !form.kode_reklame) {
-    return (
-      <AppShell>
-        <div style={styles.page}>
-          <div style={styles.errorBox}>
-            <strong>Gagal memuat data edit</strong>
-            <p>{errorMessage}</p>
-
-            <button
-              type="button"
-              style={styles.secondaryButton}
-              onClick={() => router.push("/manajemen_reklame")}
-            >
-              Kembali
-            </button>
-          </div>
-        </div>
-      </AppShell>
-    );
+    setForm(initialForm);
+    setTab("informasi");
+    setSelectedPhoto(null);
+    setPhotoCaption("");
+    setPendingPhotos([]);
+    setPhotoInputKey((prev) => prev + 1);
+    setErrorMessage("");
+    setSuccessMessage("");
   }
 
   return (
@@ -480,33 +404,25 @@ export default function Page() {
           <div style={styles.breadcrumbIcon}>≡</div>
           <span>Manajemen Reklame</span>
           <span style={{ color: "#c0cad8" }}>›</span>
-          <span>Detail Reklame</span>
-          <span style={{ color: "#c0cad8" }}>›</span>
           <span style={{ color: "#3aaef7", fontWeight: 600 }}>
-            Edit Reklame
+            Tambah Reklame Baru
           </span>
         </div>
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <div style={{ display: "flex", alignItems: "center", paddingBottom: 12 }}>
+            <div style={styles.headerIdentity}>
               <button
                 type="button"
-                onClick={() =>
-                  router.push(
-                    `/manajemen_reklame/detail/${encodeURIComponent(
-                      form.kode_reklame
-                    )}`
-                  )
-                }
+                onClick={() => router.push("/manajemen_reklame")}
                 style={styles.backButton}
               >
                 ‹
               </button>
 
               <div>
-                <div style={styles.title}>Edit Reklame</div>
-                <div style={styles.subtitle}>{form.kode_reklame}</div>
+                <div style={styles.title}>Tambah Reklame Baru</div>
+                <div style={styles.subtitle}>Isi data pada 3 halaman berikut</div>
               </div>
             </div>
 
@@ -548,7 +464,6 @@ export default function Page() {
               {errorMessage && (
                 <div style={styles.alertError}>{errorMessage}</div>
               )}
-
               {successMessage && (
                 <div style={styles.alertSuccess}>{successMessage}</div>
               )}
@@ -565,23 +480,24 @@ export default function Page() {
           )}
 
           {tab === "lokasi" && (
-            <LokasiSection
-              form={form}
+            <ReklameLocationSection
+              latitude={form.latitude}
+              longitude={form.longitude}
               onCoordinateChange={updateCoordinate}
               onUseCurrentLocation={handleUseCurrentLocation}
             />
           )}
 
           {tab === "media" && (
-            <MediaSection
-              photos={photos}
+            <CreateMediaSection
               selectedPhoto={selectedPhoto}
               photoCaption={photoCaption}
-              uploadingPhoto={uploadingPhoto}
+              pendingPhotos={pendingPhotos}
+              photoInputKey={photoInputKey}
               onSelectPhoto={setSelectedPhoto}
               onCaptionChange={setPhotoCaption}
-              onUploadPhoto={handleUploadPhoto}
-              onDeletePhoto={handleDeletePhoto}
+              onAddPhoto={handleAddPendingPhoto}
+              onDeletePhoto={handleDeletePendingPhoto}
             />
           )}
 
@@ -604,7 +520,7 @@ export default function Page() {
               onClick={handleSubmit}
               disabled={saving}
             >
-              {saving ? "Menyimpan..." : "Simpan Perubahan"}
+              {saving ? "Menyimpan..." : "Simpan Reklame Baru"}
             </button>
           </div>
         </div>
@@ -630,29 +546,26 @@ function InformasiSection({
 
       <Grid4>
         <InputCard
-          label="Kode Reklame"
+          label="Kode Reklame *"
           name="kode_reklame"
           value={form.kode_reklame}
-          readOnly
           onChange={onChange}
+          placeholder="Contoh: RKL-001"
         />
-
         <InputCard
-          label="Nama Pemilik"
+          label="Nama Pemilik *"
           name="nama_pemilik"
           value={form.nama_pemilik}
           onChange={onChange}
         />
-
         <InputCard
           label="NIK/NPWP"
           name="nik_npwp"
           value={form.nik_npwp}
           onChange={onChange}
         />
-
         <SelectCard
-          label="Status Reklame"
+          label="Status Reklame *"
           name="status_reklame"
           value={form.status_reklame}
           onChange={onChange}
@@ -672,14 +585,12 @@ function InformasiSection({
           value={form.luas_m2}
           onChange={onChange}
         />
-
         <InputCard
           label="Tinggi Reklame m"
           name="tinggi_m"
           value={form.tinggi_m}
           onChange={onChange}
         />
-
         <InputCard
           label="Tanggal Pasang"
           name="tanggal_pasang"
@@ -687,7 +598,6 @@ function InformasiSection({
           type="date"
           onChange={onChange}
         />
-
         <SelectCard
           label="Kategori"
           name="kategori"
@@ -721,22 +631,19 @@ function InformasiSection({
             })),
           ]}
         />
-
-       
+      
         <InputCard
           label="Kabupaten/Kota"
           name="kabupaten_kota"
           value={form.kabupaten_kota}
           onChange={onChange}
         />
-
         <InputCard
           label="Pengguna"
           name="pengguna"
           value={form.pengguna}
           onChange={onChange}
         />
-
         <InputCard
           label="Kuasa Pengguna"
           name="kuasa_pengguna"
@@ -748,43 +655,24 @@ function InformasiSection({
   );
 }
 
-function LokasiSection({
-  form,
-  onCoordinateChange,
-  onUseCurrentLocation,
-}: {
-  form: ReklameForm;
-  onCoordinateChange: (latitude: string, longitude: string) => void;
-  onUseCurrentLocation: () => void;
-}) {
-  return (
-    <ReklameLocationSection
-      latitude={form.latitude}
-      longitude={form.longitude}
-      onCoordinateChange={onCoordinateChange}
-      onUseCurrentLocation={onUseCurrentLocation}
-    />
-  );
-}
-
-function MediaSection({
-  photos,
+function CreateMediaSection({
   selectedPhoto,
   photoCaption,
-  uploadingPhoto,
+  pendingPhotos,
+  photoInputKey,
   onSelectPhoto,
   onCaptionChange,
-  onUploadPhoto,
+  onAddPhoto,
   onDeletePhoto,
 }: {
-  photos: FotoReklame[];
   selectedPhoto: File | null;
   photoCaption: string;
-  uploadingPhoto: boolean;
+  pendingPhotos: PendingPhoto[];
+  photoInputKey: number;
   onSelectPhoto: (file: File | null) => void;
   onCaptionChange: (value: string) => void;
-  onUploadPhoto: () => void;
-  onDeletePhoto: (id: number | string) => void;
+  onAddPhoto: () => void;
+  onDeletePhoto: (id: string) => void;
 }) {
   return (
     <div style={{ padding: "12px 14px 14px" }}>
@@ -794,23 +682,10 @@ function MediaSection({
         <div style={styles.uploadCard}>
           <div style={styles.inputLabel}>Unggah Foto</div>
 
-          <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: "#f1f5f9",
-              border: "1px dashed #cbd5e1",
-              padding: "10px 16px",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 13,
-              color: "#334155",
-              fontWeight: 500,
-            }}
-          >
+          <label style={styles.filePickerLabel}>
             <span style={{ fontSize: 16 }}>📎</span> Pilih Foto
             <input
+              key={photoInputKey}
               type="file"
               accept="image/*"
               onChange={(event) =>
@@ -820,7 +695,7 @@ function MediaSection({
             />
           </label>
 
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+          <div style={styles.selectedFileText}>
             {selectedPhoto ? (
               <span style={{ color: "#16a34a" }}>✓ {selectedPhoto.name}</span>
             ) : (
@@ -831,7 +706,6 @@ function MediaSection({
 
         <div style={styles.uploadCard}>
           <div style={styles.inputLabel}>Keterangan Foto</div>
-
           <input
             value={photoCaption}
             onChange={(event) => onCaptionChange(event.target.value)}
@@ -843,46 +717,41 @@ function MediaSection({
 
       <button
         type="button"
-        style={{
-          ...styles.smallPrimaryButton,
-          marginBottom: 12,
-          opacity: uploadingPhoto ? 0.7 : 1,
-        }}
-        onClick={onUploadPhoto}
-        disabled={uploadingPhoto}
+        style={{ ...styles.smallPrimaryButton, marginBottom: 8 }}
+        onClick={onAddPhoto}
       >
-        {uploadingPhoto ? "Mengunggah..." : "Upload Foto"}
+        Tambahkan Foto
       </button>
 
-      {photos.length === 0 ? (
+      <div style={styles.mediaHint}>
+        Foto pada daftar berikut akan diunggah setelah tombol Simpan Reklame Baru ditekan.
+      </div>
+
+      {pendingPhotos.length === 0 ? (
         <div style={styles.emptyPhoto}>Belum ada foto reklame.</div>
       ) : (
         <div style={styles.photoGrid}>
-          {photos.map((item) => (
-            <div key={item.id} style={styles.photoItem}>
+          {pendingPhotos.map((photo) => (
+            <div key={photo.id} style={styles.photoItem}>
               <img
-                src={buildFileUrl(item.foto)}
-                alt={item.keterangan || "Foto reklame"}
+                src={photo.previewUrl}
+                alt={photo.keterangan || "Foto reklame"}
                 style={styles.photoImage}
               />
-
               <button
                 type="button"
-                onClick={() => onDeletePhoto(item.id)}
+                onClick={() => onDeletePhoto(photo.id)}
                 style={styles.deletePhotoButton}
               >
                 🗑
               </button>
-
               <div style={styles.photoCaption}>
-                {item.keterangan || "Tanpa keterangan"}
+                {photo.keterangan || "Tanpa keterangan"}
               </div>
             </div>
           ))}
         </div>
       )}
-
-
     </div>
   );
 }
@@ -911,7 +780,6 @@ function InputCard({
   return (
     <div style={styles.inputCard}>
       <div style={styles.inputLabel}>{label}</div>
-
       <input
         name={name}
         type={type}
@@ -944,7 +812,6 @@ function SelectCard({
   return (
     <div style={styles.inputCard}>
       <div style={styles.inputLabel}>{label}</div>
-
       <select
         name={name}
         value={value}
@@ -961,53 +828,6 @@ function SelectCard({
   );
 }
 
-function normalizeValue(value: unknown) {
-  if (value === null || value === undefined) return "";
-  return String(value);
-}
-
-function toInputDate(value: string | null | undefined) {
-  if (!value) return "";
-
-  if (value.includes("T")) {
-    return value.split("T")[0];
-  }
-
-  return value;
-}
-
-function toArrayResponse<T>(data: unknown): T[] {
-  if (Array.isArray(data)) return data as T[];
-
-  if (typeof data === "object" && data !== null && "results" in data) {
-    const results = (data as { results?: unknown }).results;
-    if (Array.isArray(results)) return results as T[];
-  }
-
-  return [];
-}
-
-function buildFileUrl(path: string) {
-  if (!path) return "";
-
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-
-  return `${API_BASE_URL}${path}`;
-}
-
-function isValidCoordinate(latitude: number, longitude: number) {
-  return (
-    !Number.isNaN(latitude) &&
-    !Number.isNaN(longitude) &&
-    latitude >= -90 &&
-    latitude <= 90 &&
-    longitude >= -180 &&
-    longitude <= 180
-  );
-}
-
 const styles: { [key: string]: React.CSSProperties } = {
   page: {
     minHeight: "100vh",
@@ -1016,7 +836,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontFamily: "'Segoe UI', Tahoma, sans-serif",
     color: "#1f2937",
   },
-
   breadcrumb: {
     background: "#f9fbfd",
     border: "1px solid #edf1f6",
@@ -1029,7 +848,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     marginBottom: 10,
     borderRadius: 6,
   },
-
   breadcrumbIcon: {
     width: 22,
     height: 22,
@@ -1042,14 +860,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: 12,
     fontWeight: 700,
   },
-
   card: {
     background: "#fff",
     borderRadius: 8,
     border: "1px solid #edf1f6",
     overflow: "hidden",
   },
-
   cardHeader: {
     display: "flex",
     alignItems: "center",
@@ -1057,8 +873,14 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: "12px 16px 0",
     borderBottom: "1px solid #eef2f7",
     minHeight: 52,
+    gap: 16,
+    flexWrap: "wrap",
   },
-
+  headerIdentity: {
+    display: "flex",
+    alignItems: "center",
+    paddingBottom: 12,
+  },
   backButton: {
     width: 18,
     height: 18,
@@ -1071,25 +893,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: "#7b8798",
     padding: 0,
   },
-
-  title: {
-    fontWeight: 600,
-    fontSize: 14,
-    color: "#2f3f53",
-  },
-
-  subtitle: {
-    fontSize: 11,
-    color: "#8b97a6",
-    marginTop: 2,
-  },
-
+  title: { fontWeight: 600, fontSize: 14, color: "#2f3f53" },
+  subtitle: { fontSize: 11, color: "#8b97a6", marginTop: 2 },
   tabs: {
     display: "flex",
     gap: 18,
-    paddingBottom: 0,
   },
-
   tabButton: {
     display: "flex",
     alignItems: "center",
@@ -1102,7 +911,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: "none",
     background: "transparent",
   },
-
   tabIcon: {
     width: 14,
     height: 14,
@@ -1112,21 +920,18 @@ const styles: { [key: string]: React.CSSProperties } = {
     textAlign: "center",
     fontWeight: 700,
   },
-
   sectionTitle: {
     fontSize: 12,
     fontWeight: 600,
     color: "#6e7f93",
     marginBottom: 10,
   },
-
   grid4: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 8,
     marginBottom: 8,
   },
-
   inputCard: {
     border: "1px solid #dfe6ef",
     borderRadius: 6,
@@ -1134,13 +939,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     position: "relative",
     minHeight: 44,
   },
-
-  inputLabel: {
-    fontSize: 10,
-    color: "#9aa8b8",
-    marginBottom: 2,
-  },
-
+  inputLabel: { fontSize: 10, color: "#9aa8b8", marginBottom: 2 },
   plainInput: {
     width: "100%",
     border: "none",
@@ -1151,7 +950,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: "transparent",
     fontFamily: "inherit",
   },
-
   plainSelect: {
     width: "100%",
     border: "none",
@@ -1162,7 +960,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: "transparent",
     fontFamily: "inherit",
   },
-
   footer: {
     display: "flex",
     justifyContent: "flex-end",
@@ -1170,7 +967,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     padding: "14px 14px",
     borderTop: "1px solid #eef2f7",
   },
-
   resetButton: {
     display: "flex",
     alignItems: "center",
@@ -1186,7 +982,6 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: "pointer",
     fontWeight: 600,
   },
-
   saveButton: {
     minWidth: 132,
     height: 34,
@@ -1198,20 +993,54 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: "pointer",
     fontWeight: 600,
   },
-
-  secondaryButton: {
-    minWidth: 98,
-    height: 34,
+  alertError: {
+    background: "#fef2f2",
+    color: "#991b1b",
+    border: "1px solid #fecaca",
+    padding: 10,
     borderRadius: 6,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    color: "#374151",
+    marginBottom: 10,
     fontSize: 12,
-    cursor: "pointer",
-    fontWeight: 600,
-    marginTop: 12,
   },
-
+  alertSuccess: {
+    background: "#dcfce7",
+    color: "#166534",
+    border: "1px solid #bbf7d0",
+    padding: 10,
+    borderRadius: 6,
+    marginBottom: 10,
+    fontSize: 12,
+  },
+  mediaInputGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+    marginBottom: 10,
+  },
+  uploadCard: {
+    border: "1px solid #dfe6ef",
+    borderRadius: 6,
+    padding: "6px 10px",
+    minHeight: 44,
+  },
+  filePickerLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    background: "#f1f5f9",
+    border: "1px dashed #cbd5e1",
+    padding: "10px 16px",
+    borderRadius: 6,
+    cursor: "pointer",
+    fontSize: 13,
+    color: "#334155",
+    fontWeight: 500,
+  },
+  selectedFileText: {
+    fontSize: 12,
+    color: "#6b7280",
+    marginTop: 8,
+  },
   smallPrimaryButton: {
     minWidth: 116,
     height: 30,
@@ -1223,58 +1052,16 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 600,
     cursor: "pointer",
   },
-
-  smallOutlineButton: {
-    minWidth: 116,
-    height: 30,
-    border: "1px solid #95d5fb",
-    borderRadius: 6,
-    background: "#f8fdff",
-    color: "#36aff8",
+  mediaHint: {
     fontSize: 11,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-
-  mapActionRow: {
-    display: "flex",
-    gap: 8,
-    marginTop: 10,
-    marginBottom: 8,
-  },
-
-  mapBox: {
-    border: "1px solid #dfe6ef",
-    borderRadius: 6,
-    padding: 8,
-  },
-
-  mapInfoText: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#6b7280",
-  },
-
-  mediaInputGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
+    color: "#64748b",
     marginBottom: 10,
   },
-
-  uploadCard: {
-    border: "1px solid #dfe6ef",
-    borderRadius: 6,
-    padding: "6px 10px",
-    minHeight: 44,
-  },
-
   photoGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 8,
   },
-
   photoItem: {
     position: "relative",
     borderRadius: 6,
@@ -1283,13 +1070,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: "1px solid #dfe6ef",
     background: "#e5e7eb",
   },
-
   photoImage: {
     width: "100%",
     height: "100%",
     objectFit: "cover",
   },
-
   deletePhotoButton: {
     position: "absolute",
     top: 4,
@@ -1305,69 +1090,22 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: "pointer",
     lineHeight: 1,
   },
-
   photoCaption: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    background: "rgba(0,0,0,0.55)",
+    background: "rgba(15, 23, 42, 0.72)",
     color: "#fff",
-    padding: "4px 6px",
+    padding: "5px 6px",
     fontSize: 10,
   },
-
   emptyPhoto: {
     border: "1px dashed #cbd5e1",
     borderRadius: 6,
     padding: 18,
-    color: "#6b7280",
-    fontSize: 12,
     textAlign: "center",
-  },
-
-  youtubeNote: {
-    marginTop: 12,
-    fontSize: 11,
-    color: "#6b7280",
-    background: "#f9fafb",
-    border: "1px solid #e5e7eb",
-    borderRadius: 6,
-    padding: 8,
-  },
-
-  alertError: {
-    background: "#fef2f2",
-    color: "#991b1b",
-    border: "1px solid #fecaca",
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 10,
+    color: "#94a3b8",
     fontSize: 12,
-  },
-
-  alertSuccess: {
-    background: "#dcfce7",
-    color: "#166534",
-    border: "1px solid #bbf7d0",
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 10,
-    fontSize: 12,
-  },
-
-  loading: {
-    background: "#fff",
-    borderRadius: 8,
-    padding: 24,
-    color: "#6b7280",
-    textAlign: "center",
-  },
-
-  errorBox: {
-    background: "#fff",
-    borderRadius: 8,
-    padding: 24,
-    color: "#dc2626",
   },
 };

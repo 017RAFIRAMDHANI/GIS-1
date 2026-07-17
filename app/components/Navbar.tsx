@@ -40,7 +40,7 @@ export default function Navbar({ onDrawerOpen }: NavbarProps) {
   return (
     <nav className="navbar" ref={navRef}>
       {/* Brand */}
-      <Link className="brand" href="/">
+      <Link className="brand" href="/dashboard">
         <LogoIcon />
         
       </Link>
@@ -50,7 +50,7 @@ export default function Navbar({ onDrawerOpen }: NavbarProps) {
         <div className="nav-menu">
 
           {/* Peta Sebaran */}
-          <Link className="nav-item" href="/">
+          <Link className="nav-item" href="/dashboard">
             <svg className="n-icon" viewBox="0 0 24 24">
               <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
             </svg>
@@ -104,25 +104,32 @@ export default function Navbar({ onDrawerOpen }: NavbarProps) {
             </div>
           </div>
 
-          {/* Infografis */}
+          {/* Infografis Reklame */}
           <Link className="nav-item" href="/infografis">
             <svg className="n-icon" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="9" />
               <path d="M12 8v4l3 3" />
             </svg>
-            Infografis
+            Infografis Reklame
           </Link>
 
-          {/* Laporan Aset */}
-          {/* <Link className="nav-item" href="/laporan_aset">
+          {/* Manajemen Laporan (Admin) */}
+          <Link className="nav-item" href="/manajemen-laporan">
             <svg className="n-icon" viewBox="0 0 24 24">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            Laporan Aset
-          </Link> */}
+            Laporan Masuk
+          </Link>
+
+          {/* Infografis Laporan */}
+          <Link className="nav-item" href="/infografis-laporan">
+            <svg className="n-icon" viewBox="0 0 24 24">
+              <path d="M18 20V10" />
+              <path d="M12 20V4" />
+              <path d="M6 20v-6" />
+            </svg>
+            Infografis Laporan
+          </Link>
         </div>
 
         {/* Desktop user */}
